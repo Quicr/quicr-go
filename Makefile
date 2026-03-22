@@ -1,6 +1,6 @@
 # qgo Makefile - Build orchestration for libquicr Go bindings
 
-.PHONY: all build test clean libquicr shim examples lint vet fmt imports check help
+.PHONY: all build test bench clean libquicr shim examples lint vet fmt imports check help
 
 # Configuration
 LIBQUICR_DIR := libquicr
@@ -56,6 +56,7 @@ help:
 	@echo "  shim      - Build libquicr and C shim"
 	@echo "  build     - Build Go package"
 	@echo "  test      - Run tests"
+	@echo "  bench     - Run benchmarks"
 	@echo "  examples  - Build example applications"
 	@echo "  clean     - Clean build artifacts"
 	@echo ""
@@ -102,6 +103,11 @@ build: check-shim
 test: check-shim
 	@echo "=== Running tests ==="
 	go test -v -race ./...
+
+# Run benchmarks
+bench: check-shim
+	@echo "=== Running benchmarks ==="
+	go test -bench=. -benchmem -run=^$$ ./...
 
 # Build examples
 # Note: -ldflags="-s -w" strips debug symbols to fix code signature issues on macOS
