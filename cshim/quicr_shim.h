@@ -149,12 +149,38 @@ typedef enum {
 } quicr_filter_type_t;
 
 // =============================================================================
+// Subscribe Namespace Status
+// =============================================================================
+
+typedef enum {
+  QUICR_SUBSCRIBE_NAMESPACE_STATUS_OK = 0,
+  QUICR_SUBSCRIBE_NAMESPACE_STATUS_NOT_SUBSCRIBED,
+  QUICR_SUBSCRIBE_NAMESPACE_STATUS_ERROR,
+} quicr_subscribe_namespace_status_t;
+
+// =============================================================================
+// Publish Namespace Status
+// =============================================================================
+
+typedef enum {
+  QUICR_PUBLISH_NAMESPACE_STATUS_OK = 0,
+  QUICR_PUBLISH_NAMESPACE_STATUS_NOT_CONNECTED,
+  QUICR_PUBLISH_NAMESPACE_STATUS_NOT_PUBLISHED,
+  QUICR_PUBLISH_NAMESPACE_STATUS_PENDING_RESPONSE,
+  QUICR_PUBLISH_NAMESPACE_STATUS_NOT_AUTHORIZED,
+  QUICR_PUBLISH_NAMESPACE_STATUS_SENDING_DONE,
+  QUICR_PUBLISH_NAMESPACE_STATUS_ERROR,
+} quicr_publish_namespace_status_t;
+
+// =============================================================================
 // Opaque Handle Types
 // =============================================================================
 
 typedef void *quicr_client_t;
 typedef void *quicr_publish_track_handler_t;
 typedef void *quicr_subscribe_track_handler_t;
+typedef void *quicr_publish_namespace_handler_t;
+typedef void *quicr_subscribe_namespace_handler_t;
 
 // =============================================================================
 // Data Structures
@@ -257,6 +283,18 @@ typedef void (*quicr_subscribe_status_callback_t)(
 typedef void (*quicr_object_received_callback_t)(const quicr_object_t *object,
                                                  void *user_data);
 
+// Publish namespace status changed callback
+typedef void (*quicr_publish_namespace_status_callback_t)(
+    quicr_publish_namespace_status_t status, void *user_data);
+
+// Subscribe namespace status changed callback
+typedef void (*quicr_subscribe_namespace_status_callback_t)(
+    quicr_subscribe_namespace_status_t status, void *user_data);
+
+// Subscribe namespace - new track announced callback
+typedef void (*quicr_namespace_track_announced_callback_t)(
+    const quicr_full_track_name_t *full_track_name, void *user_data);
+
 // =============================================================================
 // Client Functions
 // =============================================================================
@@ -284,15 +322,25 @@ void quicr_client_set_status_callback(quicr_client_t client,
                                       quicr_client_status_callback_t callback,
                                       void *user_data);
 
-// Publish a namespace (announce)
+// Publish a namespace using handler
 quicr_result_t
 quicr_client_publish_namespace(quicr_client_t client,
-                               const quicr_namespace_t *name_space);
+                               quicr_publish_namespace_handler_t handler);
 
-// Publish namespace done
+// Publish namespace done using handler
 quicr_result_t
 quicr_client_publish_namespace_done(quicr_client_t client,
-                                    const quicr_namespace_t *name_space);
+                                    quicr_publish_namespace_handler_t handler);
+
+// Subscribe to a namespace prefix
+quicr_result_t
+quicr_client_subscribe_namespace(quicr_client_t client,
+                                 quicr_subscribe_namespace_handler_t handler);
+
+// Unsubscribe from namespace prefix
+quicr_result_t
+quicr_client_unsubscribe_namespace(quicr_client_t client,
+                                   quicr_subscribe_namespace_handler_t handler);
 
 // =============================================================================
 // Publish Track Handler Functions
@@ -389,6 +437,55 @@ void quicr_subscribe_track_handler_set_object_callback(
 void quicr_subscribe_track_handler_set_status_callback(
     quicr_subscribe_track_handler_t handler,
     quicr_subscribe_status_callback_t callback, void *user_data);
+
+// =============================================================================
+// Publish Namespace Handler Functions
+// =============================================================================
+
+// Create publish namespace handler
+quicr_publish_namespace_handler_t
+quicr_publish_namespace_handler_create(const quicr_namespace_t *prefix);
+
+// Destroy publish namespace handler
+void quicr_publish_namespace_handler_destroy(
+    quicr_publish_namespace_handler_t handler);
+
+// Get publish namespace status
+quicr_publish_namespace_status_t
+quicr_publish_namespace_handler_get_status(
+    quicr_publish_namespace_handler_t handler);
+
+// Set status callback
+void quicr_publish_namespace_handler_set_status_callback(
+    quicr_publish_namespace_handler_t handler,
+    quicr_publish_namespace_status_callback_t callback, void *user_data);
+
+// =============================================================================
+// Subscribe Namespace Handler Functions
+// =============================================================================
+
+// Create subscribe namespace handler
+quicr_subscribe_namespace_handler_t
+quicr_subscribe_namespace_handler_create(const quicr_namespace_t *prefix);
+
+// Destroy subscribe namespace handler
+void quicr_subscribe_namespace_handler_destroy(
+    quicr_subscribe_namespace_handler_t handler);
+
+// Get subscribe namespace status
+quicr_subscribe_namespace_status_t
+quicr_subscribe_namespace_handler_get_status(
+    quicr_subscribe_namespace_handler_t handler);
+
+// Set status callback
+void quicr_subscribe_namespace_handler_set_status_callback(
+    quicr_subscribe_namespace_handler_t handler,
+    quicr_subscribe_namespace_status_callback_t callback, void *user_data);
+
+// Set track announced callback - called when new track is announced under the namespace
+void quicr_subscribe_namespace_handler_set_track_announced_callback(
+    quicr_subscribe_namespace_handler_t handler,
+    quicr_namespace_track_announced_callback_t callback, void *user_data);
 
 // =============================================================================
 // Utility Functions

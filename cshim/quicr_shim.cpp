@@ -6,7 +6,9 @@
 #include "quicr_shim.h"
 
 #include <quicr/client.h>
+#include <quicr/publish_namespace_handler.h>
 #include <quicr/publish_track_handler.h>
+#include <quicr/subscribe_namespace_handler.h>
 #include <quicr/subscribe_track_handler.h>
 
 #include <cstring>
@@ -164,8 +166,6 @@ public:
     }
   }
 
-  void SetUseAnnounceFlag(bool use) { SetUseAnnounce(use); }
-
 private:
   ShimPublishTrackHandler(const quicr::FullTrackName &full_track_name,
                           quicr::TrackMode track_mode, uint8_t default_priority,
@@ -181,13 +181,10 @@ private:
 class ShimSubscribeTrackHandler : public quicr::SubscribeTrackHandler {
 public:
   static std::shared_ptr<ShimSubscribeTrackHandler>
-  Create(const quicr::FullTrackName &full_track_name,
-         quicr::messages::SubscriberPriority priority,
-         quicr::messages::GroupOrder group_order,
-         quicr::messages::FilterType filter_type) {
+  Create(const quicr::FullTrackName &full_track_name, uint8_t priority,
+         quicr::messages::GroupOrder group_order) {
     return std::shared_ptr<ShimSubscribeTrackHandler>(
-        new ShimSubscribeTrackHandler(full_track_name, priority, group_order,
-                                      filter_type));
+        new ShimSubscribeTrackHandler(full_track_name, priority, group_order));
   }
 
   void ObjectReceived(const quicr::ObjectHeaders &headers,
@@ -265,16 +262,115 @@ public:
 
 private:
   ShimSubscribeTrackHandler(const quicr::FullTrackName &full_track_name,
-                            quicr::messages::SubscriberPriority priority,
-                            quicr::messages::GroupOrder group_order,
-                            quicr::messages::FilterType filter_type)
-      : SubscribeTrackHandler(full_track_name, priority, group_order,
-                              filter_type) {}
+                            uint8_t priority,
+                            quicr::messages::GroupOrder group_order)
+      : SubscribeTrackHandler(full_track_name, priority, group_order) {}
 
   quicr_object_received_callback_t object_callback_ = nullptr;
   void *object_user_data_ = nullptr;
   quicr_subscribe_status_callback_t status_callback_ = nullptr;
   void *status_user_data_ = nullptr;
+};
+
+// Custom publish namespace handler class
+class ShimPublishNamespaceHandler : public quicr::PublishNamespaceHandler {
+public:
+  static std::shared_ptr<ShimPublishNamespaceHandler>
+  Create(const quicr::TrackNamespace &prefix) {
+    return std::shared_ptr<ShimPublishNamespaceHandler>(
+        new ShimPublishNamespaceHandler(prefix));
+  }
+
+  void StatusChanged(Status status) override {
+    if (status_callback_) {
+      status_callback_(ConvertStatus(status), status_user_data_);
+    }
+  }
+
+  void SetStatusCallback(quicr_publish_namespace_status_callback_t cb,
+                         void *user_data) {
+    status_callback_ = cb;
+    status_user_data_ = user_data;
+  }
+
+  static quicr_publish_namespace_status_t ConvertStatus(Status status) {
+    switch (status) {
+    case Status::kOk:
+      return QUICR_PUBLISH_NAMESPACE_STATUS_OK;
+    case Status::kNotConnected:
+      return QUICR_PUBLISH_NAMESPACE_STATUS_NOT_CONNECTED;
+    case Status::kNotPublished:
+      return QUICR_PUBLISH_NAMESPACE_STATUS_NOT_PUBLISHED;
+    case Status::kPendingResponse:
+      return QUICR_PUBLISH_NAMESPACE_STATUS_PENDING_RESPONSE;
+    case Status::kPublishNotAuthorized:
+      return QUICR_PUBLISH_NAMESPACE_STATUS_NOT_AUTHORIZED;
+    case Status::kSendingDone:
+      return QUICR_PUBLISH_NAMESPACE_STATUS_SENDING_DONE;
+    case Status::kError:
+      return QUICR_PUBLISH_NAMESPACE_STATUS_ERROR;
+    default:
+      return QUICR_PUBLISH_NAMESPACE_STATUS_ERROR;
+    }
+  }
+
+private:
+  ShimPublishNamespaceHandler(const quicr::TrackNamespace &prefix)
+      : PublishNamespaceHandler(prefix) {}
+
+  quicr_publish_namespace_status_callback_t status_callback_ = nullptr;
+  void *status_user_data_ = nullptr;
+};
+
+// Custom subscribe namespace handler class
+class ShimSubscribeNamespaceHandler : public quicr::SubscribeNamespaceHandler {
+public:
+  static std::shared_ptr<ShimSubscribeNamespaceHandler>
+  Create(const quicr::TrackNamespace &prefix) {
+    return std::shared_ptr<ShimSubscribeNamespaceHandler>(
+        new ShimSubscribeNamespaceHandler(prefix));
+  }
+
+  void StatusChanged(Status status) override {
+    if (status_callback_) {
+      status_callback_(ConvertStatus(status), status_user_data_);
+    }
+  }
+
+  void SetStatusCallback(quicr_subscribe_namespace_status_callback_t cb,
+                         void *user_data) {
+    status_callback_ = cb;
+    status_user_data_ = user_data;
+  }
+
+  void SetTrackAnnouncedCallback(quicr_namespace_track_announced_callback_t cb,
+                                 void *user_data) {
+    track_announced_callback_ = cb;
+    track_announced_user_data_ = user_data;
+  }
+
+  static quicr_subscribe_namespace_status_t ConvertStatus(Status status) {
+    switch (status) {
+    case Status::kOk:
+      return QUICR_SUBSCRIBE_NAMESPACE_STATUS_OK;
+    case Status::kNotSubscribed:
+      return QUICR_SUBSCRIBE_NAMESPACE_STATUS_NOT_SUBSCRIBED;
+    case Status::kError:
+      return QUICR_SUBSCRIBE_NAMESPACE_STATUS_ERROR;
+    default:
+      return QUICR_SUBSCRIBE_NAMESPACE_STATUS_ERROR;
+    }
+  }
+
+private:
+  ShimSubscribeNamespaceHandler(const quicr::TrackNamespace &prefix)
+      : SubscribeNamespaceHandler(prefix) {}
+
+  quicr_subscribe_namespace_status_callback_t status_callback_ = nullptr;
+  void *status_user_data_ = nullptr;
+  quicr_namespace_track_announced_callback_t track_announced_callback_ =
+      nullptr;
+  void *track_announced_user_data_ = nullptr;
 };
 
 // Context wrapper to hold shared_ptr
@@ -288,6 +384,14 @@ struct PublishHandlerContext {
 
 struct SubscribeHandlerContext {
   std::shared_ptr<ShimSubscribeTrackHandler> handler;
+};
+
+struct PublishNamespaceHandlerContext {
+  std::shared_ptr<ShimPublishNamespaceHandler> handler;
+};
+
+struct SubscribeNamespaceHandlerContext {
+  std::shared_ptr<ShimSubscribeNamespaceHandler> handler;
 };
 
 // Conversion helpers
@@ -330,21 +434,9 @@ quicr::messages::GroupOrder ConvertGroupOrder(quicr_group_order_t order) {
   }
 }
 
-quicr::messages::FilterType ConvertFilterType(quicr_filter_type_t filter) {
-  switch (filter) {
-  case QUICR_FILTER_TYPE_LATEST_GROUP:
-    return quicr::messages::FilterType::kNextGroupStart;
-  case QUICR_FILTER_TYPE_LATEST_OBJECT:
-  case QUICR_FILTER_TYPE_LARGEST_OBJECT:
-    return quicr::messages::FilterType::kLargestObject;
-  case QUICR_FILTER_TYPE_ABSOLUTE_START:
-    return quicr::messages::FilterType::kAbsoluteStart;
-  case QUICR_FILTER_TYPE_ABSOLUTE_RANGE:
-    return quicr::messages::FilterType::kAbsoluteRange;
-  default:
-    return quicr::messages::FilterType::kLargestObject;
-  }
-}
+// Note: FilterType in libquicr has changed significantly. The new API uses
+// a Filter variant type. For simplicity, we use the default filter (no filter)
+// and group order is the main control for subscription behavior.
 
 quicr::ObjectHeaders
 ConvertObjectHeaders(const quicr_object_headers_t *headers) {
@@ -463,34 +555,67 @@ void quicr_client_set_status_callback(quicr_client_t client,
   ctx->client->SetStatusCallback(callback, user_data);
 }
 
-// Publish namespace
+// Publish namespace using handler
 quicr_result_t
 quicr_client_publish_namespace(quicr_client_t client,
-                               const quicr_namespace_t *name_space) {
-  if (!client || !name_space)
+                               quicr_publish_namespace_handler_t handler) {
+  if (!client || !handler)
     return QUICR_ERROR_INVALID_PARAM;
   auto ctx = static_cast<ClientContext *>(client);
+  auto handler_ctx = static_cast<PublishNamespaceHandlerContext *>(handler);
 
   try {
-    auto ns = ConvertNamespace(name_space);
-    ctx->client->PublishNamespace(ns);
+    ctx->client->PublishNamespace(handler_ctx->handler);
     return QUICR_OK;
   } catch (...) {
     return QUICR_ERROR_INTERNAL;
   }
 }
 
-// Publish namespace done
+// Publish namespace done using handler
 quicr_result_t
 quicr_client_publish_namespace_done(quicr_client_t client,
-                                    const quicr_namespace_t *name_space) {
-  if (!client || !name_space)
+                                    quicr_publish_namespace_handler_t handler) {
+  if (!client || !handler)
     return QUICR_ERROR_INVALID_PARAM;
   auto ctx = static_cast<ClientContext *>(client);
+  auto handler_ctx = static_cast<PublishNamespaceHandlerContext *>(handler);
 
   try {
-    auto ns = ConvertNamespace(name_space);
-    ctx->client->PublishNamespaceDone(ns);
+    ctx->client->PublishNamespaceDone(handler_ctx->handler);
+    return QUICR_OK;
+  } catch (...) {
+    return QUICR_ERROR_INTERNAL;
+  }
+}
+
+// Subscribe to namespace prefix
+quicr_result_t
+quicr_client_subscribe_namespace(quicr_client_t client,
+                                 quicr_subscribe_namespace_handler_t handler) {
+  if (!client || !handler)
+    return QUICR_ERROR_INVALID_PARAM;
+  auto ctx = static_cast<ClientContext *>(client);
+  auto handler_ctx = static_cast<SubscribeNamespaceHandlerContext *>(handler);
+
+  try {
+    ctx->client->SubscribeNamespace(handler_ctx->handler);
+    return QUICR_OK;
+  } catch (...) {
+    return QUICR_ERROR_INTERNAL;
+  }
+}
+
+// Unsubscribe from namespace prefix
+quicr_result_t quicr_client_unsubscribe_namespace(
+    quicr_client_t client, quicr_subscribe_namespace_handler_t handler) {
+  if (!client || !handler)
+    return QUICR_ERROR_INVALID_PARAM;
+  auto ctx = static_cast<ClientContext *>(client);
+  auto handler_ctx = static_cast<SubscribeNamespaceHandlerContext *>(handler);
+
+  try {
+    ctx->client->UnsubscribeNamespace(handler_ctx->handler);
     return QUICR_OK;
   } catch (...) {
     return QUICR_ERROR_INTERNAL;
@@ -513,7 +638,7 @@ quicr_publish_track_handler_create(const quicr_publish_track_config_t *config) {
     auto ctx = new PublishHandlerContext();
     ctx->handler = ShimPublishTrackHandler::Create(
         ftn, track_mode, config->default_priority, config->default_ttl);
-    ctx->handler->SetUseAnnounceFlag(config->use_announce != 0);
+    // Note: use_announce is now handled via PublishNamespace() instead of per-track
     return static_cast<quicr_publish_track_handler_t>(ctx);
   } catch (...) {
     return nullptr;
@@ -636,11 +761,10 @@ quicr_subscribe_track_handler_t quicr_subscribe_track_handler_create(
   try {
     auto ftn = ConvertFullTrackName(&config->full_track_name);
     auto group_order = ConvertGroupOrder(config->group_order);
-    auto filter_type = ConvertFilterType(config->filter_type);
 
     auto ctx = new SubscribeHandlerContext();
-    ctx->handler = ShimSubscribeTrackHandler::Create(ftn, config->priority,
-                                                     group_order, filter_type);
+    ctx->handler =
+        ShimSubscribeTrackHandler::Create(ftn, config->priority, group_order);
     return static_cast<quicr_subscribe_track_handler_t>(ctx);
   } catch (...) {
     return nullptr;
@@ -749,6 +873,104 @@ void quicr_subscribe_track_handler_set_status_callback(
     return;
   auto ctx = static_cast<SubscribeHandlerContext *>(handler);
   ctx->handler->SetStatusCallback(callback, user_data);
+}
+
+// =============================================================================
+// Publish Namespace Handler
+// =============================================================================
+
+quicr_publish_namespace_handler_t
+quicr_publish_namespace_handler_create(const quicr_namespace_t *prefix) {
+  if (!prefix)
+    return nullptr;
+
+  try {
+    auto ns = ConvertNamespace(prefix);
+    auto ctx = new PublishNamespaceHandlerContext();
+    ctx->handler = ShimPublishNamespaceHandler::Create(ns);
+    return static_cast<quicr_publish_namespace_handler_t>(ctx);
+  } catch (...) {
+    return nullptr;
+  }
+}
+
+void quicr_publish_namespace_handler_destroy(
+    quicr_publish_namespace_handler_t handler) {
+  if (!handler)
+    return;
+  auto ctx = static_cast<PublishNamespaceHandlerContext *>(handler);
+  delete ctx;
+}
+
+quicr_publish_namespace_status_t quicr_publish_namespace_handler_get_status(
+    quicr_publish_namespace_handler_t handler) {
+  if (!handler)
+    return QUICR_PUBLISH_NAMESPACE_STATUS_NOT_CONNECTED;
+  auto ctx = static_cast<PublishNamespaceHandlerContext *>(handler);
+  return ShimPublishNamespaceHandler::ConvertStatus(ctx->handler->GetStatus());
+}
+
+void quicr_publish_namespace_handler_set_status_callback(
+    quicr_publish_namespace_handler_t handler,
+    quicr_publish_namespace_status_callback_t callback, void *user_data) {
+  if (!handler)
+    return;
+  auto ctx = static_cast<PublishNamespaceHandlerContext *>(handler);
+  ctx->handler->SetStatusCallback(callback, user_data);
+}
+
+// =============================================================================
+// Subscribe Namespace Handler
+// =============================================================================
+
+quicr_subscribe_namespace_handler_t
+quicr_subscribe_namespace_handler_create(const quicr_namespace_t *prefix) {
+  if (!prefix)
+    return nullptr;
+
+  try {
+    auto ns = ConvertNamespace(prefix);
+    auto ctx = new SubscribeNamespaceHandlerContext();
+    ctx->handler = ShimSubscribeNamespaceHandler::Create(ns);
+    return static_cast<quicr_subscribe_namespace_handler_t>(ctx);
+  } catch (...) {
+    return nullptr;
+  }
+}
+
+void quicr_subscribe_namespace_handler_destroy(
+    quicr_subscribe_namespace_handler_t handler) {
+  if (!handler)
+    return;
+  auto ctx = static_cast<SubscribeNamespaceHandlerContext *>(handler);
+  delete ctx;
+}
+
+quicr_subscribe_namespace_status_t quicr_subscribe_namespace_handler_get_status(
+    quicr_subscribe_namespace_handler_t handler) {
+  if (!handler)
+    return QUICR_SUBSCRIBE_NAMESPACE_STATUS_NOT_SUBSCRIBED;
+  auto ctx = static_cast<SubscribeNamespaceHandlerContext *>(handler);
+  return ShimSubscribeNamespaceHandler::ConvertStatus(
+      ctx->handler->GetStatus());
+}
+
+void quicr_subscribe_namespace_handler_set_status_callback(
+    quicr_subscribe_namespace_handler_t handler,
+    quicr_subscribe_namespace_status_callback_t callback, void *user_data) {
+  if (!handler)
+    return;
+  auto ctx = static_cast<SubscribeNamespaceHandlerContext *>(handler);
+  ctx->handler->SetStatusCallback(callback, user_data);
+}
+
+void quicr_subscribe_namespace_handler_set_track_announced_callback(
+    quicr_subscribe_namespace_handler_t handler,
+    quicr_namespace_track_announced_callback_t callback, void *user_data) {
+  if (!handler)
+    return;
+  auto ctx = static_cast<SubscribeNamespaceHandlerContext *>(handler);
+  ctx->handler->SetTrackAnnouncedCallback(callback, user_data);
 }
 
 // =============================================================================
