@@ -204,8 +204,8 @@ func (c *Client) OnStatusChange(fn func(ClientStatus)) {
 	c.mu.Unlock()
 }
 
-// PublishNamespace announces a namespace for publishing.
-func (c *Client) PublishNamespace(ns Namespace) error {
+// PublishNamespace announces a namespace for publishing using a namespace handler.
+func (c *Client) PublishNamespace(handler *PublishNamespaceHandler) error {
 	c.mu.RLock()
 	if c.closed {
 		c.mu.RUnlock()
@@ -213,13 +213,12 @@ func (c *Client) PublishNamespace(ns Namespace) error {
 	}
 	c.mu.RUnlock()
 
-	cNs := namespaceToC(ns)
-	result := C.quicr_client_publish_namespace(c.handle, &cNs)
+	result := C.quicr_client_publish_namespace(c.handle, handler.handle)
 	return resultToError(result)
 }
 
 // PublishNamespaceDone signals that publishing to a namespace is complete.
-func (c *Client) PublishNamespaceDone(ns Namespace) error {
+func (c *Client) PublishNamespaceDone(handler *PublishNamespaceHandler) error {
 	c.mu.RLock()
 	if c.closed {
 		c.mu.RUnlock()
@@ -227,8 +226,33 @@ func (c *Client) PublishNamespaceDone(ns Namespace) error {
 	}
 	c.mu.RUnlock()
 
-	cNs := namespaceToC(ns)
-	result := C.quicr_client_publish_namespace_done(c.handle, &cNs)
+	result := C.quicr_client_publish_namespace_done(c.handle, handler.handle)
+	return resultToError(result)
+}
+
+// SubscribeNamespace subscribes to a namespace prefix to receive track announcements.
+func (c *Client) SubscribeNamespace(handler *SubscribeNamespaceHandler) error {
+	c.mu.RLock()
+	if c.closed {
+		c.mu.RUnlock()
+		return ErrClosed
+	}
+	c.mu.RUnlock()
+
+	result := C.quicr_client_subscribe_namespace(c.handle, handler.handle)
+	return resultToError(result)
+}
+
+// UnsubscribeNamespace unsubscribes from a namespace prefix.
+func (c *Client) UnsubscribeNamespace(handler *SubscribeNamespaceHandler) error {
+	c.mu.RLock()
+	if c.closed {
+		c.mu.RUnlock()
+		return ErrClosed
+	}
+	c.mu.RUnlock()
+
+	result := C.quicr_client_unsubscribe_namespace(c.handle, handler.handle)
 	return resultToError(result)
 }
 
