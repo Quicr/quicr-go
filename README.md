@@ -4,7 +4,7 @@
 
 # qgo - Go Bindings for libquicr
 
-[![CI](https://github.com/Quicr/quicr-go/actions/workflows/ci.yml/badge.svg)](https://github.com/Quicr/quicr-go/actions/workflows/ci.yml)
+[![CI](https://github.com/Quicr/moq-go/actions/workflows/ci.yml/badge.svg)](https://github.com/Quicr/moq-go/actions/workflows/ci.yml)
 
 `qgo` provides idiomatic Go bindings for [libquicr](https://github.com/Quicr/libquicr), a C++ implementation of the Media over QUIC Transport (MoQT) protocol.
 
