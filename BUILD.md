@@ -73,7 +73,8 @@ make examples
 
 | Target | Description |
 |--------|-------------|
-| `make shim` | Build C shim and libquicr |
+| `make shim` | Build C shim and libquicr from source |
+| `make deps` | Download pre-built shim libraries |
 | `make build` | Build Go package |
 | `make test` | Run tests |
 | `make bench` | Run benchmarks |
@@ -82,6 +83,18 @@ make examples
 | `make fmt` | Format Go code |
 | `make vet` | Run go vet |
 | `make lint` | Run golangci-lint |
+
+## Using Pre-built Libraries
+
+If you don't want to build from source, you can download pre-built libraries:
+
+```bash
+make deps
+```
+
+This downloads platform-specific pre-built libraries from GitHub releases. Available for:
+- macOS (arm64, x86_64)
+- Linux (arm64, x86_64)
 
 ## Upgrading libquicr
 
@@ -116,4 +129,11 @@ Ensure the shim is built before the Go package:
 make clean
 make shim
 make build
+```
+
+### Pre-built libraries not available
+
+If `make deps` fails, your platform may not have pre-built binaries yet. Build from source:
+```bash
+make shim
 ```

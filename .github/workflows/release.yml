@@ -1,0 +1,82 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            arch: arm64
+            artifact: darwin-arm64
+          - os: macos-13
+            arch: x86_64
+            artifact: darwin-amd64
+          - os: ubuntu-latest
+            arch: x86_64
+            artifact: linux-amd64
+          - os: ubuntu-24.04-arm
+            arch: arm64
+            artifact: linux-arm64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install cmake openssl@3 fmt
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake build-essential libssl-dev libfmt-dev
+
+      - name: Build shim
+        run: make shim
+
+      - name: Package libraries
+        run: |
+          mkdir -p dist/libs
+          # Copy all required static libraries to a flat directory
+          cp build/lib/*.a dist/libs/
+          cp build/libquicr/dependencies/picoquic/*.a dist/libs/
+          cp build/libquicr/dependencies/spdlog/*.a dist/libs/
+          cp build/_deps/picotls-build/*.a dist/libs/
+          # Create tarball
+          tar -czvf dist/qgo-libs-${{ matrix.artifact }}.tar.gz -C dist/libs .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qgo-libs-${{ matrix.artifact }}
+          path: dist/qgo-libs-${{ matrix.artifact }}.tar.gz
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*.tar.gz
+          generate_release_notes: true

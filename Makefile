@@ -1,6 +1,6 @@
 # qgo Makefile - Build orchestration for libquicr Go bindings
 
-.PHONY: all build test bench clean libquicr shim examples lint vet fmt imports check help
+.PHONY: all build test bench clean libquicr shim examples lint vet fmt imports check help deps
 
 # Configuration
 LIBQUICR_DIR := libquicr
@@ -53,7 +53,8 @@ help:
 	@echo ""
 	@echo "Targets:"
 	@echo "  all       - Build shim and Go package (default)"
-	@echo "  shim      - Build libquicr and C shim"
+	@echo "  shim      - Build libquicr and C shim from source"
+	@echo "  deps      - Download pre-built shim libraries (alternative to shim)"
 	@echo "  build     - Build Go package"
 	@echo "  test      - Run tests"
 	@echo "  bench     - Run benchmarks"
@@ -87,8 +88,13 @@ shim: $(LIBQUICR_DIR)/CMakeLists.txt
 	@cp $(BUILD_DIR)/libquicr/src/libquicr.a $(BUILD_DIR)/lib/ 2>/dev/null || true
 	@echo "=== Build complete ==="
 
+# Download pre-built shim libraries (alternative to building from source)
+deps:
+	@echo "=== Downloading pre-built libraries ==="
+	./scripts/download-shim.sh
+	@echo "=== Download complete ==="
+
 # Check if shim is built
-check-shim:
 	@if [ ! -f "$(BUILD_DIR)/libquicr_shim.a" ] && [ ! -f "$(BUILD_DIR)/lib/libquicr_shim.a" ]; then \
 		echo "Error: C shim not built. Run 'make shim' first."; \
 		exit 1; \

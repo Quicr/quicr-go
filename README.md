@@ -12,16 +12,22 @@ Go bindings for [libquicr](https://github.com/Quicr/libquicr), a C++ implementat
 
 ## Installation
 
+### Option 1: Using Pre-built Libraries (Recommended)
+
 ```bash
-# 1. Clone with submodules
+go get github.com/quicr/qgo@latest
+
+# Navigate to the module and download pre-built libraries
+cd $(go env GOPATH)/pkg/mod/github.com/quicr/qgo@v*
+make deps
+```
+
+### Option 2: Building from Source
+
+```bash
 git clone --recursive https://github.com/quicr/qgo.git
 cd qgo
-
-# 2. Build the C shim (required for CGO)
 make shim
-
-# 3. Use in your project
-go get github.com/quicr/qgo
 ```
 
 See [BUILD.md](BUILD.md) for detailed build instructions and requirements.
