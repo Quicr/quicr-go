@@ -1,11 +1,17 @@
 # Chat Example
 
-A multi-user chat application demonstrating MoQ namespace subscriptions.
+A multi-user chat application demonstrating the MoQ Subscribe Namespace (SubNS) flow.
+
+## How It Works
+
+1. Each user subscribes to namespace `chat/<session>` to discover other participants
+2. Each user publishes to track `chat/<session>/<user-did>/text`
+3. When a PUBLISH is received (via SubNS), the client subscribes to that track
+4. Messages are received via the subscribed tracks
 
 ## Features
 
-- Subscribe to a namespace to discover chat participants
-- Dynamic track subscription for receiving messages
+- SubNS flow for dynamic participant discovery
 - ATProto-style DID generation for user identity
 - Message grouping (10 messages per group)
 

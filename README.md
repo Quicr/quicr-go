@@ -4,124 +4,91 @@
 
 # qgo - Go Bindings for libquicr
 
-[![CI](https://github.com/Quicr/moq-go/actions/workflows/ci.yml/badge.svg)](https://github.com/Quicr/moq-go/actions/workflows/ci.yml)
+[![CI](https://github.com/Quicr/quicr-go/actions/workflows/ci.yml/badge.svg)](https://github.com/Quicr/quicr-go/actions/workflows/ci.yml)
 
-`qgo` provides idiomatic Go bindings for [libquicr](https://github.com/Quicr/libquicr), a C++ implementation of the Media over QUIC Transport (MoQT) protocol.
+Go bindings for [libquicr](https://github.com/Quicr/libquicr), a C++ implementation of Media over QUIC Transport (MoQT).
 
-**Supports MoQT draft-16 via libquicr.**
-
-
-## Requirements
-
-- Go 1.21 or later
-- C++17 compatible compiler (clang++ or g++)
-- CMake 3.15 or later
-- Git (for submodules)
-
-### Platform Dependencies
-
-**macOS:**
-```bash
-# Install via Homebrew
-brew install cmake openssl@3 fmt
-```
-
-**Linux (Ubuntu/Debian):**
-```bash
-sudo apt-get install cmake build-essential libssl-dev libfmt-dev
-```
+**Supports MoQT draft-16.**
 
 ## Installation
 
-### 1. Clone with Submodules
-
 ```bash
+# 1. Clone with submodules
 git clone --recursive https://github.com/quicr/qgo.git
 cd qgo
-```
 
-If you already cloned without `--recursive`:
-```bash
-git submodule update --init --recursive
-```
-
-### 2. Build the C Shim and libquicr
-
-```bash
+# 2. Build the C shim (required for CGO)
 make shim
+
+# 3. Use in your project
+go get github.com/quicr/qgo
 ```
 
-This builds:
-- libquicr (the C++ library)
-- quicr_shim (the CGO-compatible C wrapper)
+See [BUILD.md](BUILD.md) for detailed build instructions and requirements.
 
-### 3. Build the Go Package
+## Quick Start
 
-```bash
-make build
-```
+```go
+import "github.com/quicr/qgo"
 
-### 4. Run Tests
+func main() {
+    // Create and connect client
+    client, _ := qgo.NewClient(qgo.ClientConfig{
+        ConnectURI: "moq://localhost:4433",
+        EndpointID: "my-app",
+    })
+    defer client.Close()
+    
+    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel()
+    client.Connect(ctx)
 
-```bash
-make test
-```
+    // Publish objects
+    pub, _ := client.PublishTrack(qgo.PublishTrackConfig{
+        FullTrackName: qgo.FullTrackName{
+            Namespace: qgo.ParseNamespace("app/channel"),
+            TrackName: qgo.NewTrackName("data"),
+        },
+    })
+    pub.PublishObject(qgo.ObjectHeaders{GroupID: 1, ObjectID: 1}, []byte("hello"))
 
-### 5. Build Examples
-
-```bash
-make examples
-```
-
-## Upgrading libquicr
-
-To update to the latest libquicr version:
-
-```bash
-# Update submodule to latest
-cd libquicr
-git fetch origin
-git checkout origin/main
-cd ..
-
-# Clean and rebuild
-make clean
-make shim
-make build
-make test
+    // Subscribe to objects
+    sub, _ := client.SubscribeTrack(qgo.SubscribeTrackConfig{
+        FullTrackName: qgo.FullTrackName{
+            Namespace: qgo.ParseNamespace("app/channel"),
+            TrackName: qgo.NewTrackName("data"),
+        },
+    })
+    sub.OnObjectReceived(func(obj qgo.Object) {
+        fmt.Println("Received:", string(obj.Data))
+    })
+}
 ```
 
 ## Examples
 
-### Clock Example
-
-Publishes or subscribes to UTC timestamps.
+| Example | Description |
+|---------|-------------|
+| [clock](examples/clock/) | Simple publish/subscribe with timestamps |
+| [chat](examples/chat/) | Multi-user chat using SubNS flow |
 
 ```bash
-# Build
+# Build examples
 make examples
 
-# Publish timestamps
+# Run clock publisher
 ./bin/clock -mode publish -server localhost:4433
 
-# Subscribe to timestamps (in another terminal)
-./bin/clock -mode subscribe -server localhost:4433
+# Run chat
+./bin/chat -server localhost:4433 -session myroom
 ```
 
-### Chat Example
+## Documentation
 
-Multi-user chat using namespace subscriptions.
-
-```bash
-# Build
-make examples
-
-# Start chat (requires a MoQ relay server)
-./bin/chat -server localhost:4433 -session my-room
-```
-
-See [examples/chat/README.md](examples/chat/README.md) for details.
+- [BUILD.md](BUILD.md) - Building from source
+- [examples/](examples/) - Example applications with READMEs
+- [pkg.go.dev](https://pkg.go.dev/github.com/quicr/qgo) - API documentation
 
 ## License
 
-This project is licensed under the same terms as libquicr. See [LICENSE](LICENSE) for details.
+BSD-2-Clause. See [LICENSE](LICENSE).
