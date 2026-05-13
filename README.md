@@ -16,11 +16,10 @@ Go bindings for [libquicr](https://github.com/Quicr/libquicr), a C++ implementat
 
 ```bash
 go get github.com/quicr/qgo@latest
-
-# Navigate to the module and download pre-built libraries
-cd $(go env GOPATH)/pkg/mod/github.com/quicr/qgo@v*
-make deps
+go generate github.com/quicr/qgo
 ```
+
+This downloads platform-specific pre-built libraries from the latest release.
 
 ### Option 2: Building from Source
 
