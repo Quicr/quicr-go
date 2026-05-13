@@ -95,6 +95,7 @@ deps:
 	@echo "=== Download complete ==="
 
 # Check if shim is built
+check-shim:
 	@if [ ! -f "$(BUILD_DIR)/libquicr_shim.a" ] && [ ! -f "$(BUILD_DIR)/lib/libquicr_shim.a" ]; then \
 		echo "Error: C shim not built. Run 'make shim' first."; \
 		exit 1; \
