@@ -29,7 +29,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/quicr/qgo/qgo"
+	"github.com/quicr/qgo"
 )
 
 const (
