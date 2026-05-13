@@ -84,24 +84,20 @@ func (h *SubscribeTrackHandler) OnStatusChange(fn func(SubscribeStatus)) {
 // SetPriority updates the subscription priority.
 func (h *SubscribeTrackHandler) SetPriority(priority uint8) {
 	h.mu.RLock()
+	defer h.mu.RUnlock()
 	if h.closed {
-		h.mu.RUnlock()
 		return
 	}
-	h.mu.RUnlock()
-
 	C.quicr_subscribe_track_handler_set_priority(h.handle, C.uint8_t(priority))
 }
 
 // Pause temporarily stops receiving objects.
 func (h *SubscribeTrackHandler) Pause() error {
 	h.mu.RLock()
+	defer h.mu.RUnlock()
 	if h.closed {
-		h.mu.RUnlock()
 		return ErrClosed
 	}
-	h.mu.RUnlock()
-
 	result := C.quicr_subscribe_track_handler_pause(h.handle)
 	return resultToError(result)
 }
@@ -109,12 +105,10 @@ func (h *SubscribeTrackHandler) Pause() error {
 // Resume resumes receiving objects after pause.
 func (h *SubscribeTrackHandler) Resume() error {
 	h.mu.RLock()
+	defer h.mu.RUnlock()
 	if h.closed {
-		h.mu.RUnlock()
 		return ErrClosed
 	}
-	h.mu.RUnlock()
-
 	result := C.quicr_subscribe_track_handler_resume(h.handle)
 	return resultToError(result)
 }

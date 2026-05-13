@@ -11,6 +11,43 @@ const DefaultMetricsSampleInterval = 5 * time.Second
 // DefaultTickServiceDelay is the default tick service delay.
 const DefaultTickServiceDelay = 333 * time.Microsecond
 
+// TLSConfig configures TLS settings for the connection.
+type TLSConfig struct {
+	// InsecureSkipVerify disables server certificate verification.
+	// WARNING: This should only be used for testing.
+	InsecureSkipVerify bool
+
+	// CertFile is the path to the client certificate file (PEM format).
+	// Used for mutual TLS authentication.
+	CertFile string
+
+	// KeyFile is the path to the client private key file (PEM format).
+	// Used for mutual TLS authentication.
+	KeyFile string
+
+	// CAFile is the path to a custom CA certificate file (PEM format).
+	// If set, only certificates signed by this CA will be accepted.
+	CAFile string
+}
+
+// WorkerPoolConfig configures the callback worker pool.
+// This affects how received objects are dispatched to callbacks.
+type WorkerPoolConfig struct {
+	// Stripes is the number of independent worker pools.
+	// More stripes reduce contention but use more memory.
+	// Default: runtime.NumCPU() (capped at 4-16)
+	Stripes int
+
+	// WorkersPerStripe is the number of workers per stripe.
+	// Default: 2
+	WorkersPerStripe int
+
+	// QueueSizePerStripe is the queue size per stripe.
+	// Larger queues absorb bursts better but use more memory.
+	// Default: WorkersPerStripe * 128
+	QueueSizePerStripe int
+}
+
 // ClientConfig configures a quicr Client.
 type ClientConfig struct {
 	// ConnectURI is the relay server URI.
@@ -27,6 +64,15 @@ type ClientConfig struct {
 	// Transport specifies the underlying transport protocol.
 	// Default: TransportQUIC.
 	Transport Transport
+
+	// TLS configures TLS settings.
+	// If nil, default TLS settings are used.
+	TLS *TLSConfig
+
+	// WorkerPool configures the callback worker pool.
+	// If nil, default settings are used.
+	// Note: This is a global setting; only the first client's config is applied.
+	WorkerPool *WorkerPoolConfig
 
 	// MetricsSampleInterval controls how often metrics are sampled.
 	// Default: 5 seconds.

@@ -50,8 +50,22 @@ func ParseNamespace(s string) Namespace {
 	return NewNamespace(parts...)
 }
 
-// Entries returns the namespace entries.
+// Entries returns a copy of the namespace entries.
+// The returned slice can be safely modified without affecting the namespace.
 func (n Namespace) Entries() [][]byte {
+	if len(n.entries) == 0 {
+		return nil
+	}
+	result := make([][]byte, len(n.entries))
+	for i, e := range n.entries {
+		result[i] = append([]byte(nil), e...)
+	}
+	return result
+}
+
+// EntriesUnsafe returns the namespace entries without copying.
+// The returned slice must not be modified.
+func (n Namespace) EntriesUnsafe() [][]byte {
 	return n.entries
 }
 
@@ -91,8 +105,18 @@ func NewTrackNameFromBytes(data []byte) TrackName {
 	return TrackName{data: copied}
 }
 
-// Bytes returns the raw bytes of the track name.
+// Bytes returns a copy of the raw bytes of the track name.
+// The returned slice can be safely modified without affecting the track name.
 func (t TrackName) Bytes() []byte {
+	if len(t.data) == 0 {
+		return nil
+	}
+	return append([]byte(nil), t.data...)
+}
+
+// BytesUnsafe returns the raw bytes of the track name without copying.
+// The returned slice must not be modified.
+func (t TrackName) BytesUnsafe() []byte {
 	return t.data
 }
 

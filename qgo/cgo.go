@@ -296,7 +296,7 @@ func convertNamespace(cNs *cNamespace) Namespace {
 			entries[i] = []byte{}
 		}
 	}
-	return NewNamespaceFromBytes(entries...)
+	return Namespace{entries: entries}
 }
 
 // convertFullTrackName converts a C full track name to Go.
@@ -321,7 +321,7 @@ func convertFullTrackName(cFtn *cFullTrackName) FullTrackName {
 	}
 
 	return FullTrackName{
-		Namespace: NewNamespaceFromBytes(entries...),
-		TrackName: NewTrackNameFromBytes(trackNameData),
+		Namespace: Namespace{entries: entries},
+		TrackName: TrackName{data: trackNameData},
 	}
 }

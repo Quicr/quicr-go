@@ -9,6 +9,7 @@ package qgo
 import "C"
 
 import (
+	"context"
 	"sync"
 	"unsafe"
 )
@@ -61,12 +62,10 @@ func newPublishTrackHandler(client *Client, cfg PublishTrackConfig) (*PublishTra
 // CanPublish returns true if publishing is currently allowed.
 func (h *PublishTrackHandler) CanPublish() bool {
 	h.mu.RLock()
+	defer h.mu.RUnlock()
 	if h.closed {
-		h.mu.RUnlock()
 		return false
 	}
-	h.mu.RUnlock()
-
 	return C.quicr_publish_track_handler_can_publish(h.handle) != 0
 }
 
@@ -79,12 +78,26 @@ func (h *PublishTrackHandler) Status() PublishStatus {
 
 // PublishObject publishes a single object with the given headers and data.
 func (h *PublishTrackHandler) PublishObject(headers ObjectHeaders, data []byte) (PublishObjectStatus, error) {
+	return h.publishObjectInternal(headers, data)
+}
+
+// PublishObjectWithContext publishes a single object with context support.
+// The context is checked before attempting to publish.
+func (h *PublishTrackHandler) PublishObjectWithContext(ctx context.Context, headers ObjectHeaders, data []byte) (PublishObjectStatus, error) {
+	select {
+	case <-ctx.Done():
+		return PublishObjectInternalError, ctx.Err()
+	default:
+	}
+	return h.publishObjectInternal(headers, data)
+}
+
+func (h *PublishTrackHandler) publishObjectInternal(headers ObjectHeaders, data []byte) (PublishObjectStatus, error) {
 	h.mu.RLock()
+	defer h.mu.RUnlock()
 	if h.closed {
-		h.mu.RUnlock()
 		return PublishObjectInternalError, ErrClosed
 	}
-	h.mu.RUnlock()
 
 	cHeaders := objectHeadersToC(headers)
 	cHeaders.payload_length = C.uint64_t(len(data))
@@ -108,24 +121,20 @@ func (h *PublishTrackHandler) PublishObject(headers ObjectHeaders, data []byte) 
 // SetPriority updates the default publishing priority.
 func (h *PublishTrackHandler) SetPriority(priority uint8) {
 	h.mu.RLock()
+	defer h.mu.RUnlock()
 	if h.closed {
-		h.mu.RUnlock()
 		return
 	}
-	h.mu.RUnlock()
-
 	C.quicr_publish_track_handler_set_priority(h.handle, C.uint8_t(priority))
 }
 
 // SetTTL updates the default TTL in milliseconds.
 func (h *PublishTrackHandler) SetTTL(ttl uint32) {
 	h.mu.RLock()
+	defer h.mu.RUnlock()
 	if h.closed {
-		h.mu.RUnlock()
 		return
 	}
-	h.mu.RUnlock()
-
 	C.quicr_publish_track_handler_set_ttl(h.handle, C.uint32_t(ttl))
 }
 

@@ -37,10 +37,23 @@ type Client struct {
 	handlersMu        sync.Mutex
 }
 
+// workerPoolConfigured tracks whether the worker pool has been configured.
+var workerPoolConfigured bool
+
 // NewClient creates a new MoQ client.
 func NewClient(cfg ClientConfig) (*Client, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
+	}
+
+	// Apply worker pool config if provided and not already configured
+	if cfg.WorkerPool != nil && !workerPoolConfigured {
+		ConfigureCallbackPool(CallbackPoolConfig{
+			Stripes:            cfg.WorkerPool.Stripes,
+			WorkersPerStripe:   cfg.WorkerPool.WorkersPerStripe,
+			QueueSizePerStripe: cfg.WorkerPool.QueueSizePerStripe,
+		})
+		workerPoolConfigured = true
 	}
 
 	// Convert Go config to C config

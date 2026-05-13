@@ -18,6 +18,7 @@ extern void goPublishNamespaceReceivedCallback(quicr_namespace_t* track_namespac
 import "C"
 
 import (
+	"sync"
 	"unsafe"
 
 	"github.com/quicr/qgo/internal/registry"
@@ -27,16 +28,52 @@ import (
 // Global registries for callback routing.
 // These map handle IDs (passed as user_data in C callbacks) to Go objects.
 var (
-	clientRegistry              = registry.New[*Client]()
-	publishRegistry             = registry.New[*PublishTrackHandler]()
-	subscribeRegistry           = registry.New[*SubscribeTrackHandler]()
-	publishNamespaceRegistry    = registry.New[*PublishNamespaceHandler]()
-	subscribeNamespaceRegistry  = registry.New[*SubscribeNamespaceHandler]()
+	clientRegistry             = registry.New[*Client]()
+	publishRegistry            = registry.New[*PublishTrackHandler]()
+	subscribeRegistry          = registry.New[*SubscribeTrackHandler]()
+	publishNamespaceRegistry   = registry.New[*PublishNamespaceHandler]()
+	subscribeNamespaceRegistry = registry.New[*SubscribeNamespaceHandler]()
 )
 
-// callbackPool is a shared worker pool for processing callbacks
-// without creating a new goroutine for each callback.
-var callbackPool = workerpool.New(0, 0)
+// callbackPool is a shared striped worker pool for processing callbacks.
+// Using a striped pool reduces channel contention under high parallelism.
+var callbackPool = workerpool.NewStriped(0, 0, 0)
+
+// callbackPoolMu protects callbackPool during reconfiguration.
+var callbackPoolMu sync.RWMutex
+
+// CallbackPoolConfig configures the callback worker pool.
+type CallbackPoolConfig struct {
+	// Stripes is the number of independent worker pools.
+	// Default: runtime.NumCPU() (capped at 4-16)
+	Stripes int
+
+	// WorkersPerStripe is the number of workers per stripe.
+	// Default: 2
+	WorkersPerStripe int
+
+	// QueueSizePerStripe is the queue size per stripe.
+	// Default: WorkersPerStripe * 128
+	QueueSizePerStripe int
+}
+
+// ConfigureCallbackPool reconfigures the global callback pool.
+// This should be called before creating any clients.
+// It closes the existing pool and creates a new one with the given config.
+func ConfigureCallbackPool(cfg CallbackPoolConfig) {
+	callbackPoolMu.Lock()
+	defer callbackPoolMu.Unlock()
+
+	// Close existing pool
+	callbackPool.Close()
+
+	// Create new pool with config
+	callbackPool = workerpool.NewStriped(
+		cfg.Stripes,
+		cfg.WorkersPerStripe,
+		cfg.QueueSizePerStripe,
+	)
+}
 
 
 //export goClientStatusCallback
@@ -125,8 +162,12 @@ func goObjectReceivedCallback(obj *C.quicr_object_t, userData unsafe.Pointer) {
 	// Convert C object to Go object (copies data to avoid dangling pointer)
 	goObj := convertObject(obj)
 
-	// Use worker pool for better performance on high-frequency callbacks
-	callbackPool.Submit(func() {
+	// Use striped worker pool for better performance on high-frequency callbacks.
+	// Submit to a stripe based on handle ID to maintain ordering per subscription.
+	callbackPoolMu.RLock()
+	pool := callbackPool
+	callbackPoolMu.RUnlock()
+	pool.SubmitTo(handleID, func() {
 		callback(goObj)
 	})
 }

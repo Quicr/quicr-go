@@ -41,6 +41,63 @@ var (
 	ErrInternal = errors.New("qgo: internal error")
 )
 
+// OpError represents an error that occurred during a specific operation.
+type OpError struct {
+	Op  string // Operation name (e.g., "connect", "publish", "subscribe")
+	Err error  // Underlying error
+}
+
+func (e *OpError) Error() string {
+	if e.Err == nil {
+		return fmt.Sprintf("qgo: %s failed", e.Op)
+	}
+	return fmt.Sprintf("qgo: %s: %v", e.Op, e.Err)
+}
+
+func (e *OpError) Unwrap() error {
+	return e.Err
+}
+
+// wrapError wraps an error with operation context.
+func wrapError(op string, err error) error {
+	if err == nil {
+		return nil
+	}
+	return &OpError{Op: op, Err: err}
+}
+
+// PublishError represents an error that occurred during a publish operation.
+type PublishError struct {
+	Op      string              // Operation name
+	Status  PublishObjectStatus // The status returned by the publish operation
+	Err     error               // Underlying error (may be nil)
+}
+
+func (e *PublishError) Error() string {
+	if e.Err != nil {
+		return fmt.Sprintf("qgo: %s: %s: %v", e.Op, e.Status, e.Err)
+	}
+	return fmt.Sprintf("qgo: %s: %s", e.Op, e.Status)
+}
+
+func (e *PublishError) Unwrap() error {
+	return e.Err
+}
+
+// SubscribeError represents an error that occurred during a subscribe operation.
+type SubscribeError struct {
+	Op     string          // Operation name
+	Status SubscribeStatus // The status at the time of error
+	Err    error           // Underlying error (may be nil)
+}
+
+func (e *SubscribeError) Error() string {
+	if e.Err != nil {
+		return fmt.Sprintf("qgo: %s: %s: %v", e.Op, e.Status, e.Err)
+	}
+	return fmt.Sprintf("qgo: %s: %s", e.Op, e.Status)
+}
+
 // ClientStatus represents the connection status of a Client.
 type ClientStatus uint8
 
