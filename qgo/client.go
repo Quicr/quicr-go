@@ -29,7 +29,8 @@ type Client struct {
 
 	// Callbacks
 	onStatusChange             func(ClientStatus)
-	onPublishNamespaceReceived func(Namespace) // Called when a namespace is announced (for subscribe namespace flow)
+	onPublishNamespaceReceived func(Namespace)              // Called when ANNOUNCE is received (Announce flow)
+	onPublishReceived          func(FullTrackName, uint64)  // Called when PUBLISH is received (SubNS flow)
 
 	// Track handlers
 	publishHandlers   map[*PublishTrackHandler]struct{}
@@ -93,6 +94,7 @@ func NewClient(cfg ClientConfig) (*Client, error) {
 	c.handleID = clientRegistry.Register(c)
 	setClientStatusCallback(handle, c.handleID)
 	setClientPublishNamespaceReceivedCallback(handle, c.handleID)
+	setClientPublishReceivedCallback(handle, c.handleID)
 
 	return c, nil
 }
@@ -223,11 +225,20 @@ func (c *Client) OnStatusChange(fn func(ClientStatus)) {
 }
 
 // OnPublishNamespaceReceived sets a callback for when namespaces are announced
-// under a subscribed namespace prefix. This is the key callback for discovering
-// other participants in the subscribe namespace flow.
+// via ANNOUNCE messages (Announce flow). Use OnPublishReceived for SubNS flow.
 func (c *Client) OnPublishNamespaceReceived(fn func(Namespace)) {
 	c.mu.Lock()
 	c.onPublishNamespaceReceived = fn
+	c.mu.Unlock()
+}
+
+// OnPublishReceived sets a callback for when PUBLISH messages are received
+// for tracks matching a subscribed namespace prefix (SubNS flow).
+// The callback receives the full track name and track alias.
+// The subscriber should create a SubscribeTrack to receive objects from this track.
+func (c *Client) OnPublishReceived(fn func(FullTrackName, uint64)) {
+	c.mu.Lock()
+	c.onPublishReceived = fn
 	c.mu.Unlock()
 }
 

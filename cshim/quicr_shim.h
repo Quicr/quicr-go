@@ -291,9 +291,16 @@ typedef void (*quicr_publish_namespace_status_callback_t)(
 typedef void (*quicr_subscribe_namespace_status_callback_t)(
     quicr_subscribe_namespace_status_t status, void *user_data);
 
-// Subscribe namespace - new track announced callback (called when PublishNamespace is received)
+// Subscribe namespace - new track announced callback (called when PublishNamespace/ANNOUNCE is received)
 typedef void (*quicr_namespace_track_announced_callback_t)(
     const quicr_namespace_t *track_namespace, void *user_data);
+
+// Publish received callback (called when PUBLISH is received for SubNS flow)
+// The subscriber should create a SubscribeTrack to receive objects from this track.
+typedef void (*quicr_publish_received_callback_t)(
+    const quicr_full_track_name_t *full_track_name,
+    uint64_t track_alias,
+    void *user_data);
 
 // =============================================================================
 // Client Functions
@@ -322,10 +329,16 @@ void quicr_client_set_status_callback(quicr_client_t client,
                                       quicr_client_status_callback_t callback,
                                       void *user_data);
 
-// Set publish namespace received callback (for subscribe namespace flow)
+// Set publish namespace received callback (for ANNOUNCE flow)
 void quicr_client_set_publish_namespace_received_callback(
     quicr_client_t client,
     quicr_namespace_track_announced_callback_t callback,
+    void *user_data);
+
+// Set publish received callback (for SubNS flow - when PUBLISH message is received)
+void quicr_client_set_publish_received_callback(
+    quicr_client_t client,
+    quicr_publish_received_callback_t callback,
     void *user_data);
 
 // Publish a namespace using handler

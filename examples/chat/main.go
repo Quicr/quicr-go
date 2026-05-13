@@ -146,9 +146,10 @@ func main() {
 		tracks:   make(map[string]*qgo.SubscribeTrackHandler),
 	}
 
-	// Set up the callback for when namespaces are announced (other users joining)
-	client.OnPublishNamespaceReceived(func(ns qgo.Namespace) {
-		chat.onNamespaceAnnounced(ns)
+	// Set up the callback for when PUBLISH messages are received (SubNS flow)
+	// This is called when another user starts publishing to a track matching our namespace subscription
+	client.OnPublishReceived(func(ftn qgo.FullTrackName, trackAlias uint64) {
+		chat.onPublishReceived(ftn, trackAlias)
 	})
 
 	// Subscribe to namespace
@@ -210,7 +211,6 @@ type Chat struct {
 
 	nsHandler  *qgo.SubscribeNamespaceHandler
 	pubHandler *qgo.PublishTrackHandler
-	pubNsHandler *qgo.PublishNamespaceHandler
 
 	mu       sync.Mutex
 	tracks   map[string]*qgo.SubscribeTrackHandler
@@ -232,25 +232,20 @@ func (c *Chat) subscribeNamespace(ns qgo.Namespace) error {
 	return c.client.SubscribeNamespace(handler)
 }
 
-func (c *Chat) onNamespaceAnnounced(ns qgo.Namespace) {
+func (c *Chat) onPublishReceived(ftn qgo.FullTrackName, trackAlias uint64) {
 	// Extract DID from namespace (3rd tuple: chat/session/did)
-	entries := ns.Entries()
+	entries := ftn.Namespace.Entries()
 	if len(entries) < 3 {
 		return
 	}
 
-	announcedDID := string(entries[2])
+	publisherDID := string(entries[2])
 
-	// Don't subscribe to our own namespace
-	if announcedDID == c.userDID {
+	// Don't subscribe to our own track
+	if publisherDID == c.userDID {
 		return
 	}
 
-	// Build the full track name for this user's chat track
-	ftn := qgo.FullTrackName{
-		Namespace: ns,
-		TrackName: qgo.NewTrackName(trackName),
-	}
 	trackKey := ftn.String()
 
 	c.mu.Lock()
@@ -260,7 +255,7 @@ func (c *Chat) onNamespaceAnnounced(ns qgo.Namespace) {
 	}
 	c.mu.Unlock()
 
-	log.Printf("New participant: %s", announcedDID)
+	log.Printf("New participant: %s (track: %s, alias: %d)", publisherDID, trackKey, trackAlias)
 
 	// Subscribe to the track
 	cfg := qgo.SubscribeTrackConfig{
@@ -277,7 +272,7 @@ func (c *Chat) onNamespaceAnnounced(ns qgo.Namespace) {
 	}
 
 	handler.OnObjectReceived(func(obj qgo.Object) {
-		c.onMessageReceived(announcedDID, obj)
+		c.onMessageReceived(publisherDID, obj)
 	})
 
 	c.mu.Lock()
@@ -297,18 +292,7 @@ func (c *Chat) onMessageReceived(senderDID string, obj qgo.Object) {
 }
 
 func (c *Chat) createPublishTrack(ns qgo.Namespace) error {
-	// Create namespace handler for announce
-	nsHandler, err := qgo.NewPublishNamespaceHandler(ns)
-	if err != nil {
-		return err
-	}
-	c.pubNsHandler = nsHandler
-
-	if err := c.client.PublishNamespace(nsHandler); err != nil {
-		return err
-	}
-
-	// Create publish track
+	// Create publish track (SubNS flow - no need for PublishNamespace/ANNOUNCE)
 	ftn := qgo.FullTrackName{
 		Namespace: ns,
 		TrackName: qgo.NewTrackName(trackName),
@@ -319,7 +303,7 @@ func (c *Chat) createPublishTrack(ns qgo.Namespace) error {
 		TrackMode:     qgo.TrackModeStream,
 		Priority:      defaultPriority,
 		TTL:           defaultTTL,
-		UseAnnounce:   true,
+		UseAnnounce:   false, // SubNS flow - relay forwards PUBLISH to SubNS subscribers
 	}
 
 	handler, err := c.client.PublishTrack(cfg)
@@ -401,9 +385,6 @@ func (c *Chat) cleanup() {
 
 	if c.pubHandler != nil {
 		c.pubHandler.Close()
-	}
-	if c.pubNsHandler != nil {
-		c.pubNsHandler.Close()
 	}
 	if c.nsHandler != nil {
 		c.nsHandler.Close()

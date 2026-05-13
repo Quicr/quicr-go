@@ -14,6 +14,7 @@ extern void goObjectReceivedCallback(quicr_object_t* object, void* user_data);
 extern void goPublishNamespaceStatusCallback(quicr_publish_namespace_status_t status, void* user_data);
 extern void goSubscribeNamespaceStatusCallback(quicr_subscribe_namespace_status_t status, void* user_data);
 extern void goPublishNamespaceReceivedCallback(quicr_namespace_t* track_namespace, void* user_data);
+extern void goPublishReceivedCallback(quicr_full_track_name_t* full_track_name, uint64_t track_alias, void* user_data);
 */
 import "C"
 
@@ -181,11 +182,20 @@ func setClientStatusCallback(handle cClient, handleID uint64) {
 	)
 }
 
-// setClientPublishNamespaceReceivedCallback sets the callback for namespace announcements.
+// setClientPublishNamespaceReceivedCallback sets the callback for namespace announcements (ANNOUNCE flow).
 func setClientPublishNamespaceReceivedCallback(handle cClient, handleID uint64) {
 	C.quicr_client_set_publish_namespace_received_callback(
 		handle,
 		C.quicr_namespace_track_announced_callback_t(C.goPublishNamespaceReceivedCallback),
+		unsafe.Pointer(uintptr(handleID)),
+	)
+}
+
+// setClientPublishReceivedCallback sets the callback for PUBLISH messages (SubNS flow).
+func setClientPublishReceivedCallback(handle cClient, handleID uint64) {
+	C.quicr_client_set_publish_received_callback(
+		handle,
+		C.quicr_publish_received_callback_t(C.goPublishReceivedCallback),
 		unsafe.Pointer(uintptr(handleID)),
 	)
 }
@@ -273,6 +283,28 @@ func goPublishNamespaceReceivedCallback(ns *C.quicr_namespace_t, userData unsafe
 	goNs := convertNamespace(ns)
 
 	go callback(goNs)
+}
+
+//export goPublishReceivedCallback
+func goPublishReceivedCallback(ftn *C.quicr_full_track_name_t, trackAlias C.uint64_t, userData unsafe.Pointer) {
+	handleID := uint64(uintptr(userData))
+	client, ok := clientRegistry.Get(handleID)
+	if !ok {
+		return
+	}
+
+	client.mu.RLock()
+	callback := client.onPublishReceived
+	client.mu.RUnlock()
+
+	if callback == nil {
+		return
+	}
+
+	// Convert C full track name to Go
+	goFtn := convertFullTrackName(ftn)
+
+	go callback(goFtn, uint64(trackAlias))
 }
 
 // setPublishNamespaceStatusCallback sets the C callback for a publish namespace handler.

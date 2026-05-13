@@ -53,7 +53,7 @@ public:
     }
   }
 
-  // Called when a PublishNamespace (announce) is received for a subscribed namespace
+  // Called when a PublishNamespace (ANNOUNCE) is received for a subscribed namespace
   void PublishNamespaceReceived(
       const quicr::TrackNamespace &track_namespace,
       const quicr::PublishNamespaceAttributes & /*attrs*/) override {
@@ -61,6 +61,27 @@ public:
       quicr_namespace_t cNs;
       NamespaceToC(track_namespace, &cNs);
       publish_ns_received_callback_(&cNs, publish_ns_received_user_data_);
+    }
+  }
+
+  // Called when a PUBLISH message is received (SubNS flow)
+  void PublishReceived(
+      quicr::ConnectionHandle /*connection_handle*/,
+      uint64_t /*request_id*/,
+      const quicr::messages::PublishAttributes &attrs,
+      std::weak_ptr<quicr::SubscribeNamespaceHandler> /*sub_ns_handler*/) override {
+    if (publish_received_callback_) {
+      quicr_full_track_name_t cFtn;
+      NamespaceToC(attrs.track_full_name.name_space, &cFtn.name_space);
+
+      const auto &name = attrs.track_full_name.name;
+      cFtn.name.len = static_cast<uint16_t>(
+          std::min(name.size(), static_cast<size_t>(QUICR_MAX_TRACK_NAME_SIZE)));
+      if (cFtn.name.len > 0) {
+        std::memcpy(cFtn.name.data, name.data(), cFtn.name.len);
+      }
+
+      publish_received_callback_(&cFtn, attrs.track_alias, publish_received_user_data_);
     }
   }
 
@@ -73,6 +94,12 @@ public:
       quicr_namespace_track_announced_callback_t cb, void *user_data) {
     publish_ns_received_callback_ = cb;
     publish_ns_received_user_data_ = user_data;
+  }
+
+  void SetPublishReceivedCallback(
+      quicr_publish_received_callback_t cb, void *user_data) {
+    publish_received_callback_ = cb;
+    publish_received_user_data_ = user_data;
   }
 
   static quicr_client_status_t ConvertStatus(quicr::Transport::Status status) {
@@ -108,6 +135,8 @@ private:
   quicr_namespace_track_announced_callback_t publish_ns_received_callback_ =
       nullptr;
   void *publish_ns_received_user_data_ = nullptr;
+  quicr_publish_received_callback_t publish_received_callback_ = nullptr;
+  void *publish_received_user_data_ = nullptr;
 };
 
 // Custom publish track handler class
@@ -589,6 +618,16 @@ void quicr_client_set_publish_namespace_received_callback(
     return;
   auto ctx = static_cast<ClientContext *>(client);
   ctx->client->SetPublishNamespaceReceivedCallback(callback, user_data);
+}
+
+// Set publish received callback (SubNS flow)
+void quicr_client_set_publish_received_callback(
+    quicr_client_t client, quicr_publish_received_callback_t callback,
+    void *user_data) {
+  if (!client)
+    return;
+  auto ctx = static_cast<ClientContext *>(client);
+  ctx->client->SetPublishReceivedCallback(callback, user_data);
 }
 
 // Publish namespace using handler
