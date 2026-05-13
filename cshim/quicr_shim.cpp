@@ -223,7 +223,8 @@ public:
   }
 
   void ObjectReceived(const quicr::ObjectHeaders &headers,
-                      quicr::BytesSpan data) override {
+                      quicr::BytesSpan data,
+                      std::optional<quicr::messages::StreamHeaderProperties> /*stream_mode*/ = std::nullopt) override {
     if (object_callback_) {
       quicr_object_t obj;
       obj.headers.group_id = headers.group_id;
@@ -450,13 +451,12 @@ quicr::TrackMode ConvertTrackMode(quicr_track_mode_t mode) {
 
 quicr::messages::GroupOrder ConvertGroupOrder(quicr_group_order_t order) {
   switch (order) {
-  case QUICR_GROUP_ORDER_ASCENDING:
-    return quicr::messages::GroupOrder::kAscending;
   case QUICR_GROUP_ORDER_DESCENDING:
     return quicr::messages::GroupOrder::kDescending;
+  case QUICR_GROUP_ORDER_ASCENDING:
   case QUICR_GROUP_ORDER_ORIGINAL:
   default:
-    return quicr::messages::GroupOrder::kOriginalPublisherOrder;
+    return quicr::messages::GroupOrder::kAscending;
   }
 }
 
