@@ -260,6 +260,22 @@ func objectHeadersToC(h ObjectHeaders) cObjectHeaders {
 	cH.has_priority = 1
 	cH.has_ttl = 1
 	cH.has_track_mode = 0
+	cH.num_extensions = 0
+	for i, ext := range h.Extensions {
+		if i >= C.QUICR_MAX_EXTENSIONS {
+			break
+		}
+		cH.extensions[i].key = C.uint64_t(ext.Key)
+		vLen := len(ext.Value)
+		if vLen > C.QUICR_MAX_EXTENSION_VALUE_SIZE {
+			vLen = C.QUICR_MAX_EXTENSION_VALUE_SIZE
+		}
+		if vLen > 0 {
+			C.memcpy(unsafe.Pointer(&cH.extensions[i].value[0]), unsafe.Pointer(&ext.Value[0]), C.size_t(vLen))
+		}
+		cH.extensions[i].value_len = C.uint16_t(vLen)
+		cH.num_extensions++
+	}
 	return cH
 }
 
@@ -274,6 +290,24 @@ func convertObject(cObj *cObject) Object {
 			TTL:        uint16(cObj.headers.ttl),
 			Status:     ObjectStatus(cObj.headers.status),
 		},
+	}
+
+	// Convert extensions
+	numExt := int(cObj.headers.num_extensions)
+	if numExt > 0 {
+		obj.Headers.Extensions = make([]Extension, numExt)
+		for i := 0; i < numExt; i++ {
+			ext := &cObj.headers.extensions[i]
+			vLen := int(ext.value_len)
+			val := make([]byte, vLen)
+			if vLen > 0 {
+				copy(val, C.GoBytes(unsafe.Pointer(&ext.value[0]), C.int(vLen)))
+			}
+			obj.Headers.Extensions[i] = Extension{
+				Key:   uint64(ext.key),
+				Value: val,
+			}
+		}
 	}
 
 	// Copy data to Go memory (critical: C data may be freed after callback returns)

@@ -262,6 +262,12 @@ func (f FilterType) String() string {
 	}
 }
 
+// Extension represents a single object extension key-value pair.
+type Extension struct {
+	Key   uint64
+	Value []byte
+}
+
 // ObjectHeaders contains metadata for a published object.
 type ObjectHeaders struct {
 	// GroupID is the application-defined group identifier.
@@ -276,6 +282,8 @@ type ObjectHeaders struct {
 	TTL uint16
 	// Status is the object status.
 	Status ObjectStatus
+	// Extensions are optional key-value pairs attached to the object.
+	Extensions []Extension
 }
 
 // Object represents a received object with headers and data.

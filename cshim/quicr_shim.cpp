@@ -270,6 +270,22 @@ public:
         obj.headers.track_mode =
             static_cast<quicr_track_mode_t>(headers.track_mode.value());
       }
+
+      obj.headers.num_extensions = 0;
+      if (headers.extensions.has_value()) {
+        for (const auto& [key, values] : *headers.extensions) {
+          if (obj.headers.num_extensions >= QUICR_MAX_EXTENSIONS) break;
+          if (values.empty()) continue;
+          auto& ext = obj.headers.extensions[obj.headers.num_extensions];
+          ext.key = key;
+          const auto& val = values[0];
+          ext.value_len = static_cast<uint16_t>(
+              std::min(val.size(), static_cast<size_t>(QUICR_MAX_EXTENSION_VALUE_SIZE)));
+          std::memcpy(ext.value, val.data(), ext.value_len);
+          obj.headers.num_extensions++;
+        }
+      }
+
       obj.data = data.data();
       obj.data_len = data.size();
 
@@ -509,6 +525,15 @@ ConvertObjectHeaders(const quicr_object_headers_t *headers) {
   }
   if (headers->has_track_mode) {
     result.track_mode = ConvertTrackMode(headers->track_mode);
+  }
+  if (headers->num_extensions > 0) {
+    quicr::Extensions ext;
+    for (uint8_t i = 0; i < headers->num_extensions; i++) {
+      const auto& e = headers->extensions[i];
+      std::vector<uint8_t> val(e.value, e.value + e.value_len);
+      ext[e.key] = { std::move(val) };
+    }
+    result.extensions = std::move(ext);
   }
   return result;
 }

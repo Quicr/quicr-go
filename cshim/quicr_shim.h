@@ -216,6 +216,16 @@ typedef struct {
   quicr_track_name_t name;
 } quicr_full_track_name_t;
 
+#define QUICR_MAX_EXTENSIONS 4
+#define QUICR_MAX_EXTENSION_VALUE_SIZE 64
+
+// Object extension key-value pair
+typedef struct {
+  uint64_t key;
+  uint8_t value[QUICR_MAX_EXTENSION_VALUE_SIZE];
+  uint16_t value_len;
+} quicr_extension_t;
+
 // Object headers
 typedef struct {
   uint64_t group_id;
@@ -229,6 +239,8 @@ typedef struct {
   int has_priority;   // bool: 1 if priority is set
   int has_ttl;        // bool: 1 if ttl is set
   int has_track_mode; // bool: 1 if track_mode is set
+  quicr_extension_t extensions[QUICR_MAX_EXTENSIONS];
+  uint8_t num_extensions;
 } quicr_object_headers_t;
 
 // Received object (headers + data)
