@@ -15,6 +15,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 // =============================================================================
@@ -22,6 +23,9 @@
 // =============================================================================
 
 namespace {
+
+// Forward declarations
+class ShimSubscribeTrackHandler;
 
 // Helper to convert namespace to C struct
 void NamespaceToC(const quicr::TrackNamespace &ns, quicr_namespace_t *out) {
@@ -66,8 +70,8 @@ public:
 
   // Called when a PUBLISH message is received (SubNS flow)
   void PublishReceived(
-      quicr::ConnectionHandle /*connection_handle*/,
-      uint64_t /*request_id*/,
+      quicr::ConnectionHandle connection_handle,
+      uint64_t request_id,
       const quicr::messages::PublishAttributes &attrs,
       std::weak_ptr<quicr::SubscribeNamespaceHandler> /*sub_ns_handler*/) override {
     if (publish_received_callback_) {
@@ -81,9 +85,30 @@ public:
         std::memcpy(cFtn.name.data, name.data(), cFtn.name.len);
       }
 
-      publish_received_callback_(&cFtn, attrs.track_alias, publish_received_user_data_);
+      // Store publish attributes for ResolvePublish
+      {
+        std::lock_guard<std::mutex> lock(pending_publish_mutex_);
+        pending_publishes_[request_id] = attrs;
+      }
+
+      publish_received_callback_(&cFtn, attrs.track_alias,
+                                 static_cast<uint64_t>(connection_handle),
+                                 request_id, publish_received_user_data_);
+    } else {
+      // No callback set — reject by default
+      auto handler = quicr::SubscribeTrackHandler::Create(
+          attrs.track_full_name, attrs.priority);
+      ResolvePublish(connection_handle, request_id, attrs,
+                     {.reason_code = quicr::PublishResponse::ReasonCode::kNotSupported},
+                     handler);
     }
   }
+
+  // Declared here, defined after ShimSubscribeTrackHandler
+  std::shared_ptr<ShimSubscribeTrackHandler> DoResolvePublish(
+      uint64_t connection_handle, uint64_t request_id,
+      const quicr::FullTrackName &ftn, uint8_t priority,
+      quicr::PublishResponse::ReasonCode reason_code);
 
   void SetStatusCallback(quicr_client_status_callback_t cb, void *user_data) {
     status_callback_ = cb;
@@ -137,6 +162,9 @@ private:
   void *publish_ns_received_user_data_ = nullptr;
   quicr_publish_received_callback_t publish_received_callback_ = nullptr;
   void *publish_received_user_data_ = nullptr;
+
+  std::mutex pending_publish_mutex_;
+  std::unordered_map<uint64_t, quicr::messages::PublishAttributes> pending_publishes_;
 };
 
 // Custom publish track handler class
@@ -341,17 +369,50 @@ public:
     }
   }
 
+  friend class ShimClient;
+
 private:
   ShimSubscribeTrackHandler(const quicr::FullTrackName &full_track_name,
                             uint8_t priority,
-                            quicr::messages::GroupOrder group_order)
-      : SubscribeTrackHandler(full_track_name, priority, group_order) {}
+                            quicr::messages::GroupOrder group_order,
+                            bool publisher_initiated = false)
+      : SubscribeTrackHandler(full_track_name, priority, group_order,
+                              std::monostate{}, std::nullopt, publisher_initiated) {}
 
   quicr_object_received_callback_t object_callback_ = nullptr;
   void *object_user_data_ = nullptr;
   quicr_subscribe_status_callback_t status_callback_ = nullptr;
   void *status_user_data_ = nullptr;
 };
+
+// Out-of-line definition of ShimClient::DoResolvePublish
+// (needs ShimSubscribeTrackHandler to be complete)
+std::shared_ptr<ShimSubscribeTrackHandler> ShimClient::DoResolvePublish(
+    uint64_t connection_handle, uint64_t request_id,
+    const quicr::FullTrackName &ftn, uint8_t priority,
+    quicr::PublishResponse::ReasonCode reason_code) {
+  quicr::messages::PublishAttributes attrs;
+  {
+    std::lock_guard<std::mutex> lock(pending_publish_mutex_);
+    auto it = pending_publishes_.find(request_id);
+    if (it != pending_publishes_.end()) {
+      attrs = it->second;
+      pending_publishes_.erase(it);
+    } else {
+      attrs.track_full_name = ftn;
+      attrs.priority = priority;
+    }
+  }
+
+  auto handler = std::shared_ptr<ShimSubscribeTrackHandler>(
+      new ShimSubscribeTrackHandler(ftn, priority, quicr::messages::GroupOrder::kAscending, true));
+  std::shared_ptr<quicr::SubscribeTrackHandler> base_handler = handler;
+  ResolvePublish(static_cast<quicr::ConnectionHandle>(connection_handle),
+                 request_id, attrs,
+                 {.reason_code = reason_code},
+                 base_handler);
+  return handler;
+}
 
 // Custom publish namespace handler class
 class ShimPublishNamespaceHandler : public quicr::PublishNamespaceHandler {
@@ -568,6 +629,7 @@ quicr_client_t quicr_client_create(const quicr_client_config_t *config) {
     cfg.connect_uri = config->connect_uri;
     cfg.metrics_sample_ms = config->metrics_sample_ms;
     cfg.tick_service_sleep_delay_us = config->tick_service_sleep_delay_us;
+    cfg.transport_config.time_queue_max_duration = 10000;
 
     auto ctx = new ClientContext();
     ctx->client = ShimClient::Create(cfg);
@@ -653,6 +715,51 @@ void quicr_client_set_publish_received_callback(
     return;
   auto ctx = static_cast<ClientContext *>(client);
   ctx->client->SetPublishReceivedCallback(callback, user_data);
+}
+
+// Resolve (accept/reject) a received PUBLISH
+quicr_subscribe_track_handler_t quicr_client_resolve_publish(
+    quicr_client_t client,
+    uint64_t connection_handle,
+    uint64_t request_id,
+    const quicr_full_track_name_t *full_track_name,
+    uint8_t priority,
+    quicr_publish_resolve_reason_t reason) {
+  if (!client || !full_track_name)
+    return nullptr;
+  auto ctx = static_cast<ClientContext *>(client);
+
+  try {
+    auto ftn = ConvertFullTrackName(full_track_name);
+
+    quicr::PublishResponse::ReasonCode rc;
+    switch (reason) {
+    case QUICR_PUBLISH_RESOLVE_OK:
+      rc = quicr::PublishResponse::ReasonCode::kOk;
+      break;
+    case QUICR_PUBLISH_RESOLVE_NOT_AUTHORIZED:
+      rc = quicr::PublishResponse::ReasonCode::kNotAuthorized;
+      break;
+    case QUICR_PUBLISH_RESOLVE_REJECTED:
+      rc = quicr::PublishResponse::ReasonCode::kRejected;
+      break;
+    case QUICR_PUBLISH_RESOLVE_NOT_SUPPORTED:
+    default:
+      rc = quicr::PublishResponse::ReasonCode::kNotSupported;
+      break;
+    }
+
+    auto handler = ctx->client->DoResolvePublish(
+        connection_handle, request_id, ftn, priority, rc);
+    if (!handler)
+      return nullptr;
+
+    auto handler_ctx = new SubscribeHandlerContext();
+    handler_ctx->handler = handler;
+    return static_cast<quicr_subscribe_track_handler_t>(handler_ctx);
+  } catch (...) {
+    return nullptr;
+  }
 }
 
 // Publish namespace using handler
@@ -819,7 +926,11 @@ quicr_publish_object_status_t quicr_publish_track_handler_publish_object(
 
     auto status = ctx->handler->PublishObject(obj_headers, span);
     return ShimPublishTrackHandler::ConvertPublishObjectStatus(status);
+  } catch (const std::exception &e) {
+    SPDLOG_ERROR("PublishObject exception: {}", e.what());
+    return QUICR_PUBLISH_OBJECT_INTERNAL_ERROR;
   } catch (...) {
+    SPDLOG_ERROR("PublishObject unknown exception");
     return QUICR_PUBLISH_OBJECT_INTERNAL_ERROR;
   }
 }

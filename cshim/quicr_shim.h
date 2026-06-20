@@ -308,11 +308,21 @@ typedef void (*quicr_namespace_track_announced_callback_t)(
     const quicr_namespace_t *track_namespace, void *user_data);
 
 // Publish received callback (called when PUBLISH is received for SubNS flow)
-// The subscriber should create a SubscribeTrack to receive objects from this track.
+// The caller MUST call quicr_client_resolve_publish() to accept/reject.
 typedef void (*quicr_publish_received_callback_t)(
     const quicr_full_track_name_t *full_track_name,
     uint64_t track_alias,
+    uint64_t connection_handle,
+    uint64_t request_id,
     void *user_data);
+
+// Publish resolve response codes
+typedef enum {
+  QUICR_PUBLISH_RESOLVE_OK = 0,
+  QUICR_PUBLISH_RESOLVE_NOT_SUPPORTED,
+  QUICR_PUBLISH_RESOLVE_NOT_AUTHORIZED,
+  QUICR_PUBLISH_RESOLVE_REJECTED,
+} quicr_publish_resolve_reason_t;
 
 // =============================================================================
 // Client Functions
@@ -352,6 +362,17 @@ void quicr_client_set_publish_received_callback(
     quicr_client_t client,
     quicr_publish_received_callback_t callback,
     void *user_data);
+
+// Resolve (accept/reject) a received PUBLISH. Sends PubOK and implicitly
+// establishes subscription. Returns the subscribe track handler that will
+// receive objects, or NULL on failure. The caller owns the handler.
+quicr_subscribe_track_handler_t quicr_client_resolve_publish(
+    quicr_client_t client,
+    uint64_t connection_handle,
+    uint64_t request_id,
+    const quicr_full_track_name_t *full_track_name,
+    uint8_t priority,
+    quicr_publish_resolve_reason_t reason);
 
 // Publish a namespace using handler
 quicr_result_t
