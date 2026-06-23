@@ -5,7 +5,7 @@ package qgo
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/cshim -I${SRCDIR}/libquicr/include
-#cgo LDFLAGS: -L${SRCDIR}/build -L${SRCDIR}/build/lib -L${SRCDIR}/build/libquicr/src -L${SRCDIR}/build/libquicr/dependencies/spdlog -L${SRCDIR}/build/libquicr/dependencies/picoquic -L${SRCDIR}/build/_deps/picotls-build -lquicr_shim -lquicr -lpicoquic-core -lpicohttp-core -lpicoquic-log -lpicotls-openssl -lpicotls-core -lpicotls-minicrypto -lspdlog -lstdc++ -lm -lpthread
+#cgo LDFLAGS: -L${SRCDIR}/build -L${SRCDIR}/build/lib -L${SRCDIR}/build/libquicr/src -L${SRCDIR}/build/libquicr/dependencies/spdlog -L${SRCDIR}/build/_deps/spdlog-build -L${SRCDIR}/build/libquicr/dependencies/picoquic -L${SRCDIR}/build/_deps/picotls-build -lquicr_shim -lquicr -lpicoquic-core -lpicohttp-core -lpicoquic-log -lpicotls-openssl -lpicotls-core -lpicotls-minicrypto -lspdlog -lstdc++ -lm -lpthread
 #cgo darwin LDFLAGS: -L/opt/homebrew/opt/openssl@3/lib -lssl -lcrypto -framework CoreFoundation -framework Security -lresolv
 #cgo linux LDFLAGS: -lssl -lcrypto
 

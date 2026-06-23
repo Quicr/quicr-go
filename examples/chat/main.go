@@ -148,8 +148,8 @@ func main() {
 
 	// Set up the callback for when PUBLISH messages are received (SubNS flow)
 	// This is called when another user starts publishing to a track matching our namespace subscription
-	client.OnPublishReceived(func(ftn qgo.FullTrackName, trackAlias uint64) {
-		chat.onPublishReceived(ftn, trackAlias)
+	client.OnPublishReceived(func(ftn qgo.FullTrackName, trackAlias uint64, connHandle uint64, requestID uint64) {
+		chat.onPublishReceived(ftn, trackAlias, connHandle, requestID)
 	})
 
 	// Subscribe to namespace
@@ -232,7 +232,7 @@ func (c *Chat) subscribeNamespace(ns qgo.Namespace) error {
 	return c.client.SubscribeNamespace(handler)
 }
 
-func (c *Chat) onPublishReceived(ftn qgo.FullTrackName, trackAlias uint64) {
+func (c *Chat) onPublishReceived(ftn qgo.FullTrackName, trackAlias uint64, connHandle uint64, requestID uint64) {
 	// Extract DID from namespace (3rd tuple: chat/session/did)
 	entries := ftn.Namespace.Entries()
 	if len(entries) < 3 {
@@ -257,17 +257,10 @@ func (c *Chat) onPublishReceived(ftn qgo.FullTrackName, trackAlias uint64) {
 
 	log.Printf("New participant: %s (track: %s, alias: %d)", publisherDID, trackKey, trackAlias)
 
-	// Subscribe to the track
-	cfg := qgo.SubscribeTrackConfig{
-		FullTrackName: ftn,
-		Priority:      defaultPriority,
-		GroupOrder:    qgo.GroupOrderAscending,
-		FilterType:    qgo.FilterTypeLatestGroup,
-	}
-
-	handler, err := c.client.SubscribeTrack(cfg)
+	// Accept the PUBLISH — this sends PubOK and implicitly establishes subscription
+	handler, err := c.client.ResolvePublish(connHandle, requestID, ftn, defaultPriority, qgo.PublishResolveOK)
 	if err != nil {
-		log.Printf("Failed to subscribe to %s: %v", trackKey, err)
+		log.Printf("Failed to resolve publish from %s: %v", trackKey, err)
 		return
 	}
 
