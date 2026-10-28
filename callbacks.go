@@ -14,7 +14,7 @@ extern void goObjectReceivedCallback(quicr_object_t* object, void* user_data);
 extern void goPublishNamespaceStatusCallback(quicr_publish_namespace_status_t status, void* user_data);
 extern void goSubscribeNamespaceStatusCallback(quicr_subscribe_namespace_status_t status, void* user_data);
 extern void goPublishNamespaceReceivedCallback(quicr_namespace_t* track_namespace, void* user_data);
-extern void goPublishReceivedCallback(quicr_full_track_name_t* full_track_name, uint64_t track_alias, void* user_data);
+extern void goPublishReceivedCallback(quicr_full_track_name_t* full_track_name, uint64_t track_alias, uint64_t connection_handle, uint64_t request_id, void* user_data);
 */
 import "C"
 
@@ -286,7 +286,7 @@ func goPublishNamespaceReceivedCallback(ns *C.quicr_namespace_t, userData unsafe
 }
 
 //export goPublishReceivedCallback
-func goPublishReceivedCallback(ftn *C.quicr_full_track_name_t, trackAlias C.uint64_t, userData unsafe.Pointer) {
+func goPublishReceivedCallback(ftn *C.quicr_full_track_name_t, trackAlias C.uint64_t, connHandle C.uint64_t, requestID C.uint64_t, userData unsafe.Pointer) {
 	handleID := uint64(uintptr(userData))
 	client, ok := clientRegistry.Get(handleID)
 	if !ok {
@@ -304,7 +304,7 @@ func goPublishReceivedCallback(ftn *C.quicr_full_track_name_t, trackAlias C.uint
 	// Convert C full track name to Go
 	goFtn := convertFullTrackName(ftn)
 
-	go callback(goFtn, uint64(trackAlias))
+	go callback(goFtn, uint64(trackAlias), uint64(connHandle), uint64(requestID))
 }
 
 // setPublishNamespaceStatusCallback sets the C callback for a publish namespace handler.

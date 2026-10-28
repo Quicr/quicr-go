@@ -29,8 +29,8 @@ type Client struct {
 
 	// Callbacks
 	onStatusChange             func(ClientStatus)
-	onPublishNamespaceReceived func(Namespace)              // Called when ANNOUNCE is received (Announce flow)
-	onPublishReceived          func(FullTrackName, uint64)  // Called when PUBLISH is received (SubNS flow)
+	onPublishNamespaceReceived func(Namespace)                               // Called when ANNOUNCE is received (Announce flow)
+	onPublishReceived          func(FullTrackName, uint64, uint64, uint64)   // Called when PUBLISH is received (SubNS flow): ftn, trackAlias, connHandle, requestID
 
 	// Track handlers
 	publishHandlers   map[*PublishTrackHandler]struct{}
@@ -234,12 +234,66 @@ func (c *Client) OnPublishNamespaceReceived(fn func(Namespace)) {
 
 // OnPublishReceived sets a callback for when PUBLISH messages are received
 // for tracks matching a subscribed namespace prefix (SubNS flow).
-// The callback receives the full track name and track alias.
-// The subscriber should create a SubscribeTrack to receive objects from this track.
-func (c *Client) OnPublishReceived(fn func(FullTrackName, uint64)) {
+// The callback receives: full track name, track alias, connection handle, request ID.
+// The caller MUST call client.ResolvePublish() to accept/reject the publish.
+func (c *Client) OnPublishReceived(fn func(FullTrackName, uint64, uint64, uint64)) {
 	c.mu.Lock()
 	c.onPublishReceived = fn
 	c.mu.Unlock()
+}
+
+// PublishResolveReason represents the response to a received PUBLISH.
+type PublishResolveReason int
+
+const (
+	PublishResolveOK           PublishResolveReason = 0
+	PublishResolveNotSupported PublishResolveReason = 1
+	PublishResolveNotAuthorized PublishResolveReason = 2
+	PublishResolveRejected     PublishResolveReason = 3
+)
+
+// ResolvePublish accepts or rejects a received PUBLISH. On acceptance (reason=PublishResolveOK),
+// it sends PubOK to the relay which implicitly establishes the subscription.
+// Returns a SubscribeTrackHandler that will receive objects for the track.
+func (c *Client) ResolvePublish(connHandle, requestID uint64, ftn FullTrackName, priority uint8, reason PublishResolveReason) (*SubscribeTrackHandler, error) {
+	c.mu.RLock()
+	if c.closed {
+		c.mu.RUnlock()
+		return nil, ErrClosed
+	}
+	c.mu.RUnlock()
+
+	cFtn := fullTrackNameToC(ftn)
+	handle := C.quicr_client_resolve_publish(
+		c.handle,
+		C.uint64_t(connHandle),
+		C.uint64_t(requestID),
+		&cFtn,
+		C.uint8_t(priority),
+		C.quicr_publish_resolve_reason_t(reason),
+	)
+	if handle == nil {
+		return nil, ErrInternal
+	}
+
+	h := &SubscribeTrackHandler{
+		handle: handle,
+		client: c,
+		config: SubscribeTrackConfig{
+			FullTrackName: ftn,
+			Priority:      priority,
+		},
+		status: SubscribeStatusPendingResponse,
+	}
+
+	h.handleID = subscribeRegistry.Register(h)
+	setSubscribeCallbacks(handle, h.handleID)
+
+	c.handlersMu.Lock()
+	c.subscribeHandlers[h] = struct{}{}
+	c.handlersMu.Unlock()
+
+	return h, nil
 }
 
 // PublishNamespace announces a namespace for publishing using a namespace handler.
